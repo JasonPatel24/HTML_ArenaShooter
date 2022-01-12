@@ -1,0 +1,430 @@
+<HTML>
+	<title>
+		Multimedia Project
+	</title>
+	<style>
+		html, body {
+			width: 100%;
+			height: 100%;
+			margin: 0px;
+			overflow: hidden;
+			background-color: #000000;
+			background-image: url("startscreen.png");
+			background-position: center;
+			background-repeat: no-repeat;
+			
+		}
+
+		canvas {
+			border: 1px solid #000000;
+			background-image: url("bg_tile.png");
+		}
+	</style>
+	<head>
+		<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+	</head>
+	<body oncontextmenu='return false;' onload='startScreen()'>
+	</body>
+	<script>
+		
+		var playerObject;
+		var bullets = [];
+		var score;
+		var enemies = [];
+		var hitReady; // Player can be hit 
+		var fireReady; // Player can shoot
+		var fireRate = 500;
+		var fireChange;
+		var moveChange;
+		var spawnTimer = 3000;
+		var round;
+		var activePower;
+		var isPower;
+		
+		var regFire;
+		var speedFire;
+		
+		// Load assets
+		// ================================================
+		
+		// GRAPHICS ASSETS
+		var playerSprite = new sprite("player.png");
+		var bulletSprite = new sprite("bullet.png");
+		var enemySprite = new sprite("enemy.png");
+		var powerups = [new sprite("speed_boost.png"), new sprite("rapid_fire.png"), new sprite("extra_life.png")];
+		
+		// SOUND ASSETS
+		var enemyDeath = new Audio("Explosion.wav");
+		var bulletFire = new Audio("Laser.wav");
+		var playerHit = new Audio("Damage.wav");
+		var booster = new Audio("Booster_Takeoff.wav");
+		var turretLoad = new Audio("Turret_Load.wav");
+		var repair = new Audio("repair.wav");
+		// ================================================
+		
+		// ============================CANVAS CONSTRUCTOR=================================
+		var game = {
+			canvas : document.createElement("canvas"),
+			Start : function() {
+				this.canvas.width = document.body.clientWidth;
+				this.canvas.height = document.body.clientHeight;
+				this.context = this.canvas.getContext("2d");
+				document.body.insertBefore(this.canvas,document.body.childNodes[0]);
+				//this.interval = setInterval(update, 20);
+				this.interval = setInterval(requestAnimationFrame(update),20)
+				this.spawner = setInterval(spawn, spawnTimer);
+			},
+			clear : function() {
+				this.context.clearRect(0,0, this.canvas.width, this.canvas.height);
+			}
+		};
+		// ===============================================================================
+		
+		function initialize() {
+			window.removeEventListener("click", initialize);
+			score = 0;
+			game.Start();
+			playerObject = new object(0,0,5,0, playerSprite, 5);
+			round = 1;
+			fireReady = true;
+			hitReady = true;
+			isPower = false;
+			fireChange = false;
+			moveChange = false;
+		}
+		
+		function sprite(src) {
+			this.img = new Image();
+			this.img.src = src;
+			return this.img;
+		}
+		
+		// ===============Game object constructor===========================
+		function object(x, y, speed, angle, objSprite, hp) {
+			this.x = x;
+			this.y = y;
+			this.hp = hp;
+			this.angle = angle;
+			this.moveSpeed = speed;
+			this.width = objSprite.width;
+			this.height = objSprite.height;
+			this.src = objSprite.src;
+			ctx = game.context;
+			this.draw = function() {
+				ctx.save();
+				ctx.translate(this.x, this.y);
+				ctx.rotate(this.angle);
+				ctx.drawImage(objSprite, objSprite.width / -2, objSprite.height / -2);
+				ctx.restore();
+			};
+		}
+		// ==================================================================
+
+		// =====================Game automation==============================
+		function update() {
+			console.log(isPower);
+			game.clear();
+			drawText("Score: " + score, "18px monospace", "#000099", 10, 20);
+			drawText("Round " + round, "18px monospace", "yellow", (game.canvas.width - game.context.measureText("Round " + round).width) - 20, 20);
+			if (playerObject.hp == 1) {
+				drawText("One life remaining!", "18px monospace", "red", 10, 40);
+			}
+			
+			else if (playerObject.hp <= 3 ) {
+				drawText("Lives remaining: " + playerObject.hp, "18px monospace", "orange", 10, 40);
+			}
+			
+			else {
+				drawText("Lives remaining: " + playerObject.hp, "18px monospace", "#00ff00", 10, 40);
+			}
+			
+			// If there is a power-up, animate it
+			if (isPower) {
+				activePower.y += activePower.moveSpeed;
+				activePower.draw();
+
+				if (activePower.y >= game.canvas.height) {
+					activePower = null;
+					isPower = false;
+				}
+			}
+			
+			// Spawn power-up if there isn't one
+			else {
+				var tryPower = 0; // Power-up position
+				
+				// In 5 seconds, determine new position for powerup
+				setTimeout(function () {
+					do {
+						tryPower = Math.floor(Math.random() * 100);
+					}
+					while (tryPower > 40)
+				}, 5000);
+				
+				// Once position is determined, determine the type of powerup and prepare to spawn
+				if (tryPower <= 40) {
+				activePower = new object(Math.floor(Math.random() * game.canvas.width), 0, 2, 0, powerups[Math.floor(Math.random() * powerups.length)], 0);
+					isPower = true;
+					console.log("New power-up!");
+				}
+			}
+			
+			// Change player movement based on key pressed
+			// ===============================================
+			if (game.keys && game.keys[87]) { moveUp(); }
+			if (game.keys && game.keys[83]) { moveDown(); }
+			if (game.keys && game.keys[65]) { moveLeft(); }
+			if (game.keys && game.keys[68]) { moveRight(); }
+			if (game.keys && game.keys[69]) { steerRight(); }
+			if (game.keys && game.keys[81]) { steerLeft(); }
+			playerObject.draw();
+			// ===============================================
+			
+			// Increase difficulty when player racks up points
+			// ===============================================
+			switch (score) {
+				case 100:
+					spawnTimer = 1500;
+					console.log("Interval: " + spawnTimer);
+					clearInterval(game.spawner);
+					game.spawner = setInterval(spawn, spawnTimer);
+					round = 2;
+					score += 10;
+					break;
+				case 500:
+					spawnTimer = 750;
+					console.log("Interval: " + spawnTimer);
+					clearInterval(game.spawner);
+					game.spawner = setInterval(spawn, spawnTimer);
+					round = 3;
+					score += 10;
+					break;
+				case 1000:
+					spawnTimer = 500;
+					console.log("Interval: " + spawnTimer);
+					clearInterval(game.spawner);
+					game.spawner = setInterval(spawn, spawnTimer);
+					round = 4;
+					score += 10;
+					break;
+			}
+			// ===============================================
+			
+			// Game end handling
+			// =============================
+			if (playerObject.hp <= 0) {
+				console.log("dead");
+				game.clear();
+				killGame();
+				drawText("You died... You scored " + score + " points! Click anywhere to restart!", "24px monospace", "red", 
+					game.canvas.width/2 - game.context.measureText("You died... You scored " + score + " points! Click anywhere to restart!").width/2, 
+						game.canvas.height/2);
+				window.addEventListener("click", initialize);
+			}
+			// =============================
+			
+			bullets.forEach(function(element) {
+				element.y += element.moveSpeed * Math.sin(element.angle);
+				element.x += element.moveSpeed * Math.cos(element.angle);
+				element.draw();
+				
+				if (element.x >= game.canvas.width || element.x <= 0 || element.y >= game.canvas.height || element.y <= 0) {
+					bullets.splice(element, 1);
+				}
+			});
+			
+			enemies.forEach(function(element) {
+				// Enemies follow the player around until dead
+				// =============================================
+				dx = playerObject.x - element.x;
+				dy = playerObject.y - element.y;
+				angle = Math.atan2(dy, dx);
+				element.y += element.moveSpeed * Math.sin(angle);
+				element.x += element.moveSpeed * Math.cos(angle);
+				element.draw();
+				// =============================================
+				
+				// Allow player to recover in between collisions with enemies
+				// =============================================================
+				if (collided(element, playerObject) && hitReady) {
+					console.log(playerObject.hp);
+					hitReady = false;
+					playerObject.hp--;
+					playerHit.play();
+					setTimeout(damaged, 3000);
+				}
+				// =============================================================
+
+				if (bullets.some(b => collided(b, element))) {
+					bullets.splice(bullets.find(b => collided(b, element)), 1);
+					//enemies.indexOf(element).hp--;
+					element.hp--;
+				}
+				
+				if (element.hp <= 0) {
+					enemies.splice(enemies.indexOf(element), 1);
+					enemyDeath.play();
+					score += 5;
+				}
+			});
+			
+			if (isPower && collided(playerObject, activePower)) {
+				console.log("Power up!");
+				powerUp(activePower);
+				activePower = null;
+				isPower = false;
+			}
+			
+			requestAnimationFrame(update);
+		}
+		// ==================================================================
+		
+		// =====================Functions====================================
+			function moveLeft() {
+				if (playerObject.x >= 0) {
+					playerObject.x -= playerObject.moveSpeed;
+				}
+			}
+			
+			function moveRight() {
+				if (playerObject.x <= game.canvas.width) {
+					playerObject.x += playerObject.moveSpeed;
+				}
+			}
+			
+			function moveUp() {
+				if (playerObject.y >= 0) {
+					playerObject.y -= playerObject.moveSpeed;
+				}
+			}
+			
+			function moveDown() {
+				if (playerObject.y <= game.canvas.height) {
+					playerObject.y += playerObject.moveSpeed;
+				}
+			}
+			
+			function steerLeft() {
+				playerObject.angle -= playerObject.moveSpeed * Math.PI / 180;
+			}
+			
+			function steerRight() {
+				playerObject.angle += playerObject.moveSpeed * Math.PI / 180;
+			}
+			
+			function spawn() {
+				// Randomize where the enemy spawns on the canvas, shouldn't spawn too close to player
+				var x,y;
+				do {
+					x = Math.floor((Math.random() * document.body.clientWidth) + 0);
+					y = Math.floor((Math.random() * document.body.clientHeight) + 0);
+				}
+				while (x <= playerObject.x + 100 && y <= playerObject.y + 100)
+				enemies.push(new object(x,y,2,0,enemySprite, 2));
+			}
+			
+			function powerUp(power) {
+				console.log("Yeet");
+				switch (power.src) {
+					case powerups[0].src:
+						playerObject.moveSpeed += 5;
+						booster.play();
+						console.log("Zoom");
+						moveChange = true;
+						break;
+					case powerups[1].src:
+						console.log("Skrra");
+						clearTimeout(regFire);
+						speedFire = setTimeout(reload, 50);
+						turretLoad.play();
+						fireChange = true;
+						break;
+					case powerups[2].src:
+						playerObject.hp++;
+						repair.play();
+						console.log("Need heering");
+						break;
+					default:
+						console.log(power.src);
+						break;
+				}
+				
+				setTimeout(revert, 5000); // Powerups last five seconds
+			}
+			
+			function collided(e1, e2) {
+				
+				return (e1.x < e2.x + e2.width && // is bullet's x smaller than width of alien?
+						e1.x + e1.width > e2.x && // is bullet's width past the x of alien?
+						e1.y < e2.y + e2.height && // is bullet's y smaller than height of alien? 
+						e1.y + e1.height > e2.y); // is bullet's height past the y of alien?
+			}
+			
+			function damaged() {
+				hitReady = true;
+			}
+			
+			function reload() {
+				fireReady = true;
+			}
+			
+			function revert() {
+				// Was it a bullet power-up
+				if (fireChange) {
+					clearTimeout(speedFire);
+					regFire = setTimeout(reload, fireRate);
+					fireChange = false;
+				}
+				
+				// Was it a speed power-up
+				if (moveChange) {
+					playerObject.moveSpeed = 5;
+					moveChange = false;
+				}
+			}
+			
+			function drawText(text, font, color, x, y) {
+				game.context.fillStyle = color;
+				game.context.font = font;
+				game.context.fillText(text,x,y);
+			}
+			
+			function startScreen() {
+				window.addEventListener("click", initialize); 
+			}
+			
+			function killGame() {
+				bullets = [];
+				enemies = [];
+				hitReady = true;
+				playerObject = null;
+				clearInterval(game.interval);
+				clearInterval(game.spawner);
+			}
+			// ==================================================================
+		
+		// =====================jQuery====================================
+		$(document).ready(function () {
+			$(document).mousedown(function () {
+				if (fireReady) {
+					bullets.push(new object(playerObject.x + ((playerSprite.width / 2) - (bulletSprite.width / 2)), 
+						playerObject.y + ((playerSprite.height / 2) - (bulletSprite.height / 2)), 
+							10, playerObject.angle, bulletSprite, 0));
+					bulletFire.play();
+					fireReady = false;
+					regFire = setTimeout(reload, fireRate);
+				}
+			});
+			
+			$(document).keydown(function(k) {
+				game.keys = (game.keys || []);
+				game.keys[k.keyCode] = true;
+			});
+			
+			$(document).keyup(function(k) {
+				game.keys[k.keyCode] = false;
+			});
+		});
+		// ================================================================
+	</script>
+</HTML>
